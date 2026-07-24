@@ -1,0 +1,29 @@
+# Dependencies and builds
+node_modules/
+.pnpm-store/
+build/
+release/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# User data and generated files
+outputs/scryfall_art_cache/
+outputs/custom_art/
+outputs/selected_print_arts/
+outputs/outputs/
+outputs/mtg_art_picker_settings.json
+outputs/mtg_art_picker_preferences.json
+work/
+tmp/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log

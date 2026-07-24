@@ -1,0 +1,50 @@
+{
+  "name": "mtg-art-picker-desktop",
+  "version": "1.1.2",
+  "description": "Select-first MTG art picker and printable proxy PDF creator",
+  "main": "electron/main.js",
+  "author": "Local",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File electron/build-backend.ps1",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^37.2.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "net.taxiera.mtg-art-picker-select-first",
+    "productName": "MTG Art Picker Select First",
+    "asar": true,
+    "files": ["electron/main.js", "package.json"],
+    "extraResources": [
+      { "from": "build/backend", "to": "backend" },
+      {
+        "from": "outputs",
+        "to": "initial-data",
+        "filter": ["mtg_art_picker_settings.json", "mtg_art_picker_preferences.json"]
+      },
+      {
+        "from": "outputs/tools/realesrgan-ncnn-vulkan",
+        "to": "tools/realesrgan-ncnn-vulkan",
+        "filter": [
+          "realesrgan-ncnn-vulkan.exe",
+          "vcomp140.dll",
+          "models/realesr-animevideov3-x2.bin",
+          "models/realesr-animevideov3-x2.param"
+        ]
+      }
+    ],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis"], "artifactName": "MTG-Art-Picker-Select-First-Setup-${version}.${ext}" },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
