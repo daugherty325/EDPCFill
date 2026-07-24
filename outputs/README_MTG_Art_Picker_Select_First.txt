@@ -40,6 +40,17 @@ in that order, overriding the main oldest/newest art order. Within each
 category, arts still follow the selected oldest/newest order. Turning a
 category off hides all arts that belong to it.
 
+Saved preference profiles
+-------------------------
+The Cache Folder section includes a "Use saved preferences" switch and a
+profile selector. Create profiles such as Premodern, Commander, Old Border, or
+Borderless, then use "Save preferences" to save the currently selected card
+arts into the active profile.
+
+Each profile has its own saved card choices. Rename or delete profiles from the
+same control row. Disabling saved preferences stops the app from automatically
+selecting saved card choices without deleting any profile or preference.
+
 The original Run_MTG_Art_Picker_Web.bat remains the classic download-first
 version. Both versions use the same settings, preferences, custom art, and
 cache folders.

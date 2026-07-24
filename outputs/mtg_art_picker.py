@@ -42,6 +42,10 @@ RESOURCE_DIR = Path(os.environ.get("MTG_ART_PICKER_RESOURCE_DIR", APP_DIR)).expa
 DATA_DIR = Path(os.environ.get("MTG_ART_PICKER_DATA_DIR", APP_DIR)).expanduser().resolve()
 SETTINGS_PATH = DATA_DIR / "mtg_art_picker_settings.json"
 PREFERENCES_PATH = DATA_DIR / "mtg_art_picker_preferences.json"
+DEFAULT_PREFERENCE_PROFILE = "Default"
+USE_SAVED_PREFERENCES_SETTING = "use_saved_preferences"
+DEFAULT_USE_SAVED_PREFERENCES = True
+PREFERENCE_PROFILE_SETTING = "preference_profile"
 DEFAULT_CACHE_DIR = Path(
     os.environ.get("MTG_ART_PICKER_CACHE_DIR", DATA_DIR / "scryfall_art_cache")
 ).expanduser().resolve()
@@ -298,21 +302,120 @@ def coerce_setting_bool(value: object, default: bool = False) -> bool:
     return default
 
 
-def load_preferences() -> dict[str, str]:
-    if not PREFERENCES_PATH.exists():
+def _clean_preference_choices(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
         return {}
+    return {str(key): str(item) for key, item in value.items() if isinstance(item, str)}
+
+
+def load_preference_profiles() -> dict[str, dict[str, str]]:
+    if not PREFERENCES_PATH.exists():
+        return {DEFAULT_PREFERENCE_PROFILE: {}}
     try:
         data = json.loads(PREFERENCES_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {}
+        return {DEFAULT_PREFERENCE_PROFILE: {}}
     if not isinstance(data, dict):
-        return {}
-    return {str(key): str(value) for key, value in data.items() if isinstance(value, str)}
+        return {DEFAULT_PREFERENCE_PROFILE: {}}
+
+    # Version 1 stored one flat card-name-to-printing mapping. Treat it as the
+    # Default profile so upgrades retain every existing saved preference.
+    if all(isinstance(value, str) for value in data.values()):
+        return {DEFAULT_PREFERENCE_PROFILE: _clean_preference_choices(data)}
+
+    raw_profiles = data.get("profiles")
+    if not isinstance(raw_profiles, dict):
+        return {DEFAULT_PREFERENCE_PROFILE: {}}
+    profiles = {
+        str(name): _clean_preference_choices(choices)
+        for name, choices in raw_profiles.items()
+        if str(name).strip() and isinstance(choices, dict)
+    }
+    return profiles or {DEFAULT_PREFERENCE_PROFILE: {}}
 
 
-def save_preferences(preferences: dict[str, str]) -> None:
+def save_preference_profiles(profiles: dict[str, dict[str, str]]) -> None:
+    cleaned = {
+        str(name).strip(): _clean_preference_choices(choices)
+        for name, choices in profiles.items()
+        if str(name).strip()
+    }
+    if not cleaned:
+        cleaned = {DEFAULT_PREFERENCE_PROFILE: {}}
     PREFERENCES_PATH.parent.mkdir(parents=True, exist_ok=True)
-    PREFERENCES_PATH.write_text(json.dumps(preferences, indent=2), encoding="utf-8")
+    PREFERENCES_PATH.write_text(
+        json.dumps({"version": 2, "profiles": cleaned}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def preference_profile_names() -> list[str]:
+    return list(load_preference_profiles())
+
+
+def resolve_preference_profile_name(profile_name: object, profiles: dict[str, dict[str, str]] | None = None) -> str:
+    profiles = profiles or load_preference_profiles()
+    requested = str(profile_name or "").strip()
+    for existing in profiles:
+        if existing.casefold() == requested.casefold():
+            return existing
+    return next(iter(profiles), DEFAULT_PREFERENCE_PROFILE)
+
+
+def load_preferences(profile_name: object = None) -> dict[str, str]:
+    profiles = load_preference_profiles()
+    resolved = resolve_preference_profile_name(profile_name or DEFAULT_PREFERENCE_PROFILE, profiles)
+    return dict(profiles.get(resolved, {}))
+
+
+def save_preferences(preferences: dict[str, str], profile_name: object = None) -> None:
+    profiles = load_preference_profiles()
+    resolved = resolve_preference_profile_name(profile_name or DEFAULT_PREFERENCE_PROFILE, profiles)
+    profiles[resolved] = _clean_preference_choices(preferences)
+    save_preference_profiles(profiles)
+
+
+def create_preference_profile(profile_name: object) -> str:
+    name = str(profile_name or "").strip()
+    if not name:
+        raise ValueError("Enter a profile name.")
+    if len(name) > 80:
+        raise ValueError("Profile names must be 80 characters or fewer.")
+    profiles = load_preference_profiles()
+    if any(existing.casefold() == name.casefold() for existing in profiles):
+        raise ValueError(f'A preference profile named "{name}" already exists.')
+    profiles[name] = {}
+    save_preference_profiles(profiles)
+    return name
+
+
+def rename_preference_profile(current_name: object, new_name: object) -> str:
+    profiles = load_preference_profiles()
+    current = resolve_preference_profile_name(current_name, profiles)
+    requested = str(new_name or "").strip()
+    if not requested:
+        raise ValueError("Enter a profile name.")
+    if len(requested) > 80:
+        raise ValueError("Profile names must be 80 characters or fewer.")
+    if requested.casefold() != current.casefold() and any(
+        existing.casefold() == requested.casefold() for existing in profiles
+    ):
+        raise ValueError(f'A preference profile named "{requested}" already exists.')
+    renamed: dict[str, dict[str, str]] = {}
+    for name, choices in profiles.items():
+        renamed[requested if name == current else name] = choices
+    save_preference_profiles(renamed)
+    return requested
+
+
+def delete_preference_profile(profile_name: object) -> str:
+    profiles = load_preference_profiles()
+    if len(profiles) <= 1:
+        raise ValueError("At least one preference profile must remain.")
+    current = resolve_preference_profile_name(profile_name, profiles)
+    del profiles[current]
+    save_preference_profiles(profiles)
+    return next(iter(profiles))
 
 
 def sort_art_options(

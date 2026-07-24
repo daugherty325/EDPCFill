@@ -23,6 +23,8 @@ more than once.
 - Enable/disable switches that hide disabled categories
 - Oldest-first and newest-first ordering within each enabled preference category
 - Custom artwork and saved per-card preferences
+- Multiple named saved-preference profiles with enable/disable, create, rename,
+  and delete controls
 - Requested set and collector-number matching
 - Optional basic-land filtering
 - Live percentage and stage reporting for downloads, AI upscaling, and PDF creation

@@ -39,7 +39,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MTG Scryfall Art Picker</title>
-  <link rel="stylesheet" href="/app.css?v=preferences13" />
+  <link rel="stylesheet" href="/app.css?v=profiles14" />
 </head>
 <body>
   <header class="topbar">
@@ -60,6 +60,19 @@ HTML = r"""<!doctype html>
       <label>
         <span>Cache folder</span>
         <input id="cacheDir" />
+      </label>
+      <div class="profile-field">
+        <span>Saved preference profile</span>
+        <div class="profile-controls">
+          <select id="preferenceProfile" aria-label="Saved preference profile"></select>
+          <button id="newProfile" type="button">New</button>
+          <button id="renameProfile" type="button">Rename</button>
+          <button id="deleteProfile" type="button">Delete</button>
+        </div>
+      </div>
+      <label class="check-field">
+        <input id="useSavedPreferences" type="checkbox" />
+        <span>Use saved preferences</span>
       </label>
       <label class="check-field">
         <input id="updateScryfallImages" type="checkbox" />
@@ -117,6 +130,27 @@ HTML = r"""<!doctype html>
       <p id="operationStatus">Starting...</p>
     </div>
   </div>
+  <div id="profileModal" class="modal" hidden>
+    <div class="modal-panel profile-modal-panel" role="dialog" aria-modal="true" aria-labelledby="profileModalTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="profileModalTitle">Preference profile</h2>
+          <p id="profileModalMessage"></p>
+        </div>
+        <button id="profileModalClose" class="icon-button" aria-label="Close profile dialog">X</button>
+      </div>
+      <div class="profile-modal-body">
+        <label id="profileNameField">
+          <span>Profile name</span>
+          <input id="profileNameInput" maxlength="80" autocomplete="off" />
+        </label>
+        <div class="profile-modal-actions">
+          <button id="profileModalCancel" type="button">Cancel</button>
+          <button id="profileModalConfirm" class="primary" type="button">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div id="artModal" class="modal" hidden>
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
       <div class="modal-head">
@@ -162,7 +196,7 @@ HTML = r"""<!doctype html>
       </div>
     </div>
   </div>
-  <script src="/app.js?v=preferences13"></script>
+  <script src="/app.js?v=profiles14"></script>
 </body>
 </html>
 """
@@ -239,15 +273,27 @@ main {
 
 .setup {
   display: grid;
-  grid-template-columns: minmax(320px, 3fr) repeat(2, minmax(160px, 1fr));
+  grid-template-columns: minmax(280px, 2fr) minmax(430px, 3fr) repeat(3, minmax(145px, 1fr));
   gap: 12px;
 }
 
-label span {
+label span,
+.profile-field > span {
   display: block;
   margin: 0 0 6px;
   color: var(--muted);
   font-size: 13px;
+}
+
+.profile-controls {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) repeat(3, auto);
+  gap: 6px;
+}
+
+.profile-controls button {
+  min-height: 36px;
+  padding-inline: 10px;
 }
 
 .check-field {
@@ -573,6 +619,22 @@ progress { width: 100%; height: 14px; accent-color: var(--accent); }
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
 }
 
+.profile-modal-panel {
+  width: min(520px, calc(100vw - 40px));
+}
+
+.profile-modal-body {
+  display: grid;
+  gap: 18px;
+  padding: 16px;
+}
+
+.profile-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .modal-head {
   position: sticky;
   top: 0;
@@ -809,6 +871,10 @@ progress { width: 100%; height: 14px; accent-color: var(--accent); }
   font: 10px system-ui, sans-serif;
 }
 
+@media (max-width: 1250px) {
+  .setup { grid-template-columns: minmax(280px, 1fr) minmax(430px, 1.5fr); }
+}
+
 @media (max-width: 840px) {
   .topbar { align-items: flex-start; flex-direction: column; }
   .actions { justify-content: flex-start; }
@@ -847,6 +913,7 @@ JS = r"""const state = {
   cardHistory: [],
   pollFailures: 0,
   preferenceCategories: [],
+  profileDialogMode: null,
 };
 
 let previewRenderTimer = null;
@@ -865,6 +932,19 @@ const CATEGORY_LABELS = {
 const els = {
   status: document.querySelector("#status"),
   cacheDir: document.querySelector("#cacheDir"),
+  preferenceProfile: document.querySelector("#preferenceProfile"),
+  useSavedPreferences: document.querySelector("#useSavedPreferences"),
+  newProfile: document.querySelector("#newProfile"),
+  renameProfile: document.querySelector("#renameProfile"),
+  deleteProfile: document.querySelector("#deleteProfile"),
+  profileModal: document.querySelector("#profileModal"),
+  profileModalTitle: document.querySelector("#profileModalTitle"),
+  profileModalMessage: document.querySelector("#profileModalMessage"),
+  profileModalClose: document.querySelector("#profileModalClose"),
+  profileModalCancel: document.querySelector("#profileModalCancel"),
+  profileModalConfirm: document.querySelector("#profileModalConfirm"),
+  profileNameField: document.querySelector("#profileNameField"),
+  profileNameInput: document.querySelector("#profileNameInput"),
   updateScryfallImages: document.querySelector("#updateScryfallImages"),
   ignoreBasics: document.querySelector("#ignoreBasics"),
   sortOrder: document.querySelector("#sortOrder"),
@@ -948,6 +1028,11 @@ function setBusy(busy) {
   els.undoCardDelete.disabled = busy || !state.cardHistory.length;
   els.exportButton.disabled = busy || !state.slots.length;
   els.savePreferencesButton.disabled = busy || !state.slots.length;
+  els.preferenceProfile.disabled = busy;
+  els.useSavedPreferences.disabled = busy;
+  els.newProfile.disabled = busy;
+  els.renameProfile.disabled = busy;
+  els.deleteProfile.disabled = busy || els.preferenceProfile.options.length <= 1;
   els.updateScryfallImages.disabled = busy;
   els.ignoreBasics.disabled = busy;
   els.preferenceCategories.querySelectorAll("input, button").forEach(control => {
@@ -958,10 +1043,90 @@ function setBusy(busy) {
 async function loadSettings() {
   const data = await api("/api/settings");
   els.cacheDir.value = data.settings.cache_dir;
+  els.useSavedPreferences.checked = Boolean(data.settings.use_saved_preferences);
+  renderProfileOptions(data.settings.preference_profiles, data.settings.preference_profile);
   els.updateScryfallImages.checked = Boolean(data.settings.update_scryfall_images);
   els.ignoreBasics.checked = Boolean(data.settings.ignore_basics);
   state.preferenceCategories = data.settings.art_preference_categories || [];
   renderPreferenceCategories();
+}
+
+function renderProfileOptions(profiles, activeProfile) {
+  els.preferenceProfile.innerHTML = "";
+  (profiles || []).forEach(profile => {
+    const option = document.createElement("option");
+    option.value = profile;
+    option.textContent = profile;
+    option.selected = profile === activeProfile;
+    els.preferenceProfile.append(option);
+  });
+  els.deleteProfile.disabled = state.busy || els.preferenceProfile.options.length <= 1;
+}
+
+async function updatePreferenceProfiles(action, extra = {}) {
+  const data = await api("/api/preference-profiles", {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      profile: els.preferenceProfile.value,
+      enabled: els.useSavedPreferences.checked,
+      ...extra,
+    }),
+  });
+  els.useSavedPreferences.checked = Boolean(data.use_saved_preferences);
+  renderProfileOptions(data.preference_profiles, data.preference_profile);
+  return data;
+}
+
+function openProfileDialog(mode) {
+  state.profileDialogMode = mode;
+  const current = els.preferenceProfile.value;
+  const deleting = mode === "delete";
+  els.profileModalTitle.textContent = mode === "create"
+    ? "Create preference profile"
+    : mode === "rename"
+      ? "Rename preference profile"
+      : "Delete preference profile";
+  els.profileModalMessage.textContent = deleting
+    ? `This permanently deletes “${current}” and all saved card choices in it.`
+    : mode === "create"
+      ? "The new profile starts empty. Save card choices into it with Save preferences."
+      : `Enter a new name for “${current}”.`;
+  els.profileNameField.hidden = deleting;
+  els.profileNameInput.value = mode === "rename" ? current : "";
+  els.profileModalConfirm.textContent = deleting ? "Delete profile" : mode === "create" ? "Create profile" : "Rename profile";
+  els.profileModalConfirm.classList.toggle("danger", deleting);
+  els.profileModalConfirm.classList.toggle("primary", !deleting);
+  els.profileModal.hidden = false;
+  if (!deleting) {
+    els.profileNameInput.focus();
+    els.profileNameInput.select();
+  }
+}
+
+function closeProfileDialog() {
+  state.profileDialogMode = null;
+  els.profileModal.hidden = true;
+}
+
+async function submitProfileDialog() {
+  const mode = state.profileDialogMode;
+  if (!mode) return;
+  const current = els.preferenceProfile.value;
+  const name = els.profileNameInput.value.trim();
+  if (mode !== "delete" && !name) {
+    toast("Enter a profile name.");
+    return;
+  }
+  try {
+    const data = await updatePreferenceProfiles(mode, mode === "delete" ? {} : { name });
+    closeProfileDialog();
+    if (mode === "create") toast(`Created preference profile “${data.preference_profile}”.`);
+    else if (mode === "rename") toast(`Renamed preference profile to “${data.preference_profile}”.`);
+    else toast(`Deleted “${current}”. Active profile: “${data.preference_profile}”.`);
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function renderPreferenceCategories() {
@@ -1031,6 +1196,8 @@ async function fetchArts() {
       body: JSON.stringify({
         deck_text: els.deckText.value,
         cache_dir: els.cacheDir.value,
+        use_saved_preferences: els.useSavedPreferences.checked,
+        preference_profile: els.preferenceProfile.value,
         update_scryfall_images: els.updateScryfallImages.checked,
         art_preference_categories: state.preferenceCategories,
         ignore_basics: els.ignoreBasics.checked,
@@ -1613,13 +1780,14 @@ async function savePreferences() {
     toast("No preferences to save.");
     return;
   }
-  if (!confirm(`Save preferred art for ${choices.length} card(s)?\n\nOnly do this for your normal personal defaults.`)) return;
+  const profile = els.preferenceProfile.value;
+  if (!confirm(`Save preferred art for ${choices.length} card(s) to the “${profile}” profile?`)) return;
   try {
     const data = await api("/api/preferences", {
       method: "POST",
-      body: JSON.stringify({ choices }),
+      body: JSON.stringify({ choices, profile }),
     });
-    toast(`Saved preferred art for ${data.saved} card(s).`);
+    toast(`Saved preferred art for ${data.saved} card(s) in “${data.profile}”.`);
   } catch (error) {
     toast(error.message);
   }
@@ -1637,6 +1805,23 @@ els.fetchButton.addEventListener("click", fetchArts);
 els.undoCardDelete.addEventListener("click", undoCardDelete);
 els.exportButton.addEventListener("click", openPrintSetup);
 els.savePreferencesButton.addEventListener("click", savePreferences);
+els.newProfile.addEventListener("click", () => openProfileDialog("create"));
+els.renameProfile.addEventListener("click", () => openProfileDialog("rename"));
+els.deleteProfile.addEventListener("click", () => openProfileDialog("delete"));
+els.profileModalClose.addEventListener("click", closeProfileDialog);
+els.profileModalCancel.addEventListener("click", closeProfileDialog);
+els.profileModalConfirm.addEventListener("click", submitProfileDialog);
+els.profileNameInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") submitProfileDialog();
+});
+els.preferenceProfile.addEventListener("change", () => {
+  updatePreferenceProfiles("select").catch(error => toast(error.message));
+});
+els.useSavedPreferences.addEventListener("change", () => {
+  updatePreferenceProfiles("configure").then(data => {
+    toast(data.use_saved_preferences ? "Saved preferences enabled." : "Saved preferences disabled.");
+  }).catch(error => toast(error.message));
+});
 els.modalClose.addEventListener("click", closeArtModal);
 els.printClose.addEventListener("click", closePrintSetup);
 els.undoPrintEdit.addEventListener("click", undoPrintEdit);
@@ -1646,8 +1831,12 @@ els.downloadPdf.addEventListener("click", downloadPrintablePdf);
 els.artModal.addEventListener("click", event => {
   if (event.target === els.artModal) closeArtModal();
 });
+els.profileModal.addEventListener("click", event => {
+  if (event.target === els.profileModal) closeProfileDialog();
+});
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
+  if (!els.profileModal.hidden) closeProfileDialog();
   if (state.modal) closeArtModal();
   if (!els.printModal.hidden) closePrintSetup();
 });
@@ -1774,6 +1963,15 @@ def start_fetch_job(payload: dict) -> str:
         core.DEFAULT_UPDATE_SCRYFALL_IMAGES,
     )
     current_settings = core.load_settings()
+    use_saved_preferences = core.coerce_setting_bool(
+        payload.get("use_saved_preferences"),
+        core.DEFAULT_USE_SAVED_PREFERENCES,
+    )
+    preference_profiles = core.load_preference_profiles()
+    preference_profile = core.resolve_preference_profile_name(
+        payload.get("preference_profile") or current_settings.get(core.PREFERENCE_PROFILE_SETTING),
+        preference_profiles,
+    )
     preference_categories = core.normalize_art_preference_categories(
         payload.get("art_preference_categories"),
         current_settings,
@@ -1781,6 +1979,8 @@ def start_fetch_job(payload: dict) -> str:
     settings = {
         "cache_dir": str(payload.get("cache_dir") or core.DEFAULT_CACHE_DIR),
         "export_parent": str(payload.get("export_parent") or core.DEFAULT_EXPORT_PARENT),
+        core.USE_SAVED_PREFERENCES_SETTING: "true" if use_saved_preferences else "false",
+        core.PREFERENCE_PROFILE_SETTING: preference_profile,
         core.UPDATE_SCRYFALL_IMAGES_SETTING: "true" if update_scryfall_images else "false",
         core.ART_PREFERENCE_CATEGORIES_SETTING: json.dumps(preference_categories),
         core.IGNORE_BASICS_SETTING: "true" if ignore_basics else "false",
@@ -1809,6 +2009,8 @@ def start_fetch_job(payload: dict) -> str:
     ordering = {
         "sort_order": str(payload.get("sort_order") or "oldest"),
         "preference_categories": preference_categories,
+        "use_saved_preferences": use_saved_preferences,
+        "preference_profile": preference_profile,
     }
     thread = threading.Thread(
         target=run_fetch_job,
@@ -1838,9 +2040,13 @@ def run_fetch_job(
     hide_list_arts: bool = False,
     ordering: dict | None = None,
 ) -> None:
-    preferences = core.load_preferences()
-    client = core.ScryfallClient(Path(settings["cache_dir"]).expanduser())
     ordering = ordering or {}
+    preferences = (
+        core.load_preferences(ordering.get("preference_profile"))
+        if core.coerce_setting_bool(ordering.get("use_saved_preferences"), True)
+        else {}
+    )
+    client = core.ScryfallClient(Path(settings["cache_dir"]).expanduser())
     slots: list[core.CardSlot] = []
     try:
         for index, entry in enumerate(entries, start=1):
@@ -2568,6 +2774,23 @@ def unique_destination(folder: Path, filename: str) -> Path:
         counter += 1
 
 
+def preference_profile_state(settings: dict[str, str] | None = None) -> dict:
+    settings = settings or core.load_settings()
+    profiles = core.load_preference_profiles()
+    active = core.resolve_preference_profile_name(
+        settings.get(core.PREFERENCE_PROFILE_SETTING),
+        profiles,
+    )
+    return {
+        "preference_profiles": list(profiles),
+        "preference_profile": active,
+        "use_saved_preferences": core.coerce_setting_bool(
+            settings.get(core.USE_SAVED_PREFERENCES_SETTING),
+            core.DEFAULT_USE_SAVED_PREFERENCES,
+        ),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
@@ -2585,6 +2808,14 @@ class Handler(BaseHTTPRequestHandler):
                     "settings": {
                         "cache_dir": settings.get("cache_dir", str(core.DEFAULT_CACHE_DIR)),
                         "export_parent": settings.get("export_parent", str(core.DEFAULT_EXPORT_PARENT)),
+                        "use_saved_preferences": core.coerce_setting_bool(
+                            settings.get(core.USE_SAVED_PREFERENCES_SETTING),
+                            core.DEFAULT_USE_SAVED_PREFERENCES,
+                        ),
+                        "preference_profiles": core.preference_profile_names(),
+                        "preference_profile": core.resolve_preference_profile_name(
+                            settings.get(core.PREFERENCE_PROFILE_SETTING),
+                        ),
                         "update_scryfall_images": core.coerce_setting_bool(
                             settings.get(core.UPDATE_SCRYFALL_IMAGES_SETTING),
                             core.DEFAULT_UPDATE_SCRYFALL_IMAGES,
@@ -2665,7 +2896,8 @@ class Handler(BaseHTTPRequestHandler):
                     {"Content-Disposition": f'attachment; filename="{filename}"', "X-Card-Count": str(card_count), "X-Page-Count": str(page_count)},
                 )
             elif self.path == "/api/preferences":
-                preferences = core.load_preferences()
+                profile = core.resolve_preference_profile_name(payload.get("profile"))
+                preferences = core.load_preferences(profile)
                 saved = 0
                 for choice in payload.get("choices") or []:
                     name = str(choice.get("name") or "")
@@ -2673,8 +2905,36 @@ class Handler(BaseHTTPRequestHandler):
                     if name and preference_id:
                         preferences[core.normalize_name(name)] = preference_id
                         saved += 1
-                core.save_preferences(preferences)
-                self.send_json({"ok": True, "saved": saved})
+                core.save_preferences(preferences, profile)
+                settings = core.load_settings()
+                settings[core.PREFERENCE_PROFILE_SETTING] = profile
+                core.save_settings(settings)
+                self.send_json({"ok": True, "saved": saved, "profile": profile})
+            elif self.path == "/api/preference-profiles":
+                settings = core.load_settings()
+                active = core.resolve_preference_profile_name(
+                    payload.get("profile") or settings.get(core.PREFERENCE_PROFILE_SETTING)
+                )
+                action = str(payload.get("action") or "configure").casefold()
+                if action == "create":
+                    active = core.create_preference_profile(payload.get("name"))
+                elif action == "rename":
+                    active = core.rename_preference_profile(active, payload.get("name"))
+                elif action == "delete":
+                    active = core.delete_preference_profile(active)
+                elif action not in {"select", "configure"}:
+                    raise ValueError("Unknown preference-profile action.")
+                enabled = core.coerce_setting_bool(
+                    payload.get("enabled"),
+                    core.coerce_setting_bool(
+                        settings.get(core.USE_SAVED_PREFERENCES_SETTING),
+                        core.DEFAULT_USE_SAVED_PREFERENCES,
+                    ),
+                )
+                settings[core.PREFERENCE_PROFILE_SETTING] = active
+                settings[core.USE_SAVED_PREFERENCES_SETTING] = "true" if enabled else "false"
+                core.save_settings(settings)
+                self.send_json({"ok": True, **preference_profile_state(settings)})
             elif self.path == "/api/category-preferences":
                 settings = core.load_settings()
                 categories = core.normalize_art_preference_categories(

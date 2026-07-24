@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +54,53 @@ class DeckOrderTests(unittest.TestCase):
             }
 
             self.assertEqual(web.selected_image_paths(payload, job), [paths[0], paths[1], paths[1], paths[2]])
+
+
+class PreferenceProfileTests(unittest.TestCase):
+    def test_legacy_preferences_migrate_to_default_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            preferences_path = Path(temp_dir) / "preferences.json"
+            preferences_path.write_text(
+                json.dumps({"lightning bolt": "legacy-print"}),
+                encoding="utf-8",
+            )
+            with patch.object(core, "PREFERENCES_PATH", preferences_path):
+                self.assertEqual(
+                    core.load_preference_profiles(),
+                    {"Default": {"lightning bolt": "legacy-print"}},
+                )
+                core.create_preference_profile("Premodern")
+                core.save_preferences({"counterspell": "old-frame-print"}, "Premodern")
+
+                self.assertEqual(
+                    core.load_preferences("Default"),
+                    {"lightning bolt": "legacy-print"},
+                )
+                self.assertEqual(
+                    core.load_preferences("Premodern"),
+                    {"counterspell": "old-frame-print"},
+                )
+                stored = json.loads(preferences_path.read_text(encoding="utf-8"))
+                self.assertEqual(stored["version"], 2)
+
+    def test_profiles_can_be_renamed_and_deleted_without_changing_other_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            preferences_path = Path(temp_dir) / "preferences.json"
+            with patch.object(core, "PREFERENCES_PATH", preferences_path):
+                core.save_preferences({"sol ring": "default-print"})
+                core.create_preference_profile("Commander")
+                core.save_preferences({"sol ring": "commander-print"}, "Commander")
+
+                renamed = core.rename_preference_profile("Commander", "Borderless")
+                fallback = core.delete_preference_profile("Default")
+
+                self.assertEqual(renamed, "Borderless")
+                self.assertEqual(fallback, "Borderless")
+                self.assertEqual(core.preference_profile_names(), ["Borderless"])
+                self.assertEqual(
+                    core.load_preferences("Borderless"),
+                    {"sol ring": "commander-print"},
+                )
 
 
 class SelectFirstTests(unittest.TestCase):
