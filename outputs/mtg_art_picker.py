@@ -55,6 +55,19 @@ HIDE_FOREIGN_ARTS_SETTING = "hide_foreign_arts"
 DEFAULT_HIDE_FOREIGN_ARTS = False
 HIDE_LIST_ARTS_SETTING = "hide_list_arts"
 DEFAULT_HIDE_LIST_ARTS = False
+ART_PREFERENCE_CATEGORIES_SETTING = "art_preference_categories"
+ART_PREFERENCE_CATEGORY_KEYS = (
+    "borderless",
+    "extended_art",
+    "old_border",
+    "new_border",
+    "foreign",
+    "promo",
+    "the_list",
+)
+DEFAULT_ART_PREFERENCE_CATEGORIES = tuple(
+    {"key": key, "enabled": True} for key in ART_PREFERENCE_CATEGORY_KEYS
+)
 IGNORE_BASICS_SETTING = "ignore_basics"
 DEFAULT_IGNORE_BASICS = False
 SCRYFALL_NAMED_URL = "https://api.scryfall.com/cards/named"
@@ -119,6 +132,7 @@ class ArtOption:
     cache_path: Path
     preview_url: str = ""
     preference_key: str = ""
+    preference_categories: tuple[str, ...] = ()
     selected: bool = False
 
     @property
@@ -308,6 +322,91 @@ def sort_art_options(
     sorted_options = list(options)
     sorted_options.sort(key=lambda option: (option.released_at or "", option.set_code, option.collector_number), reverse=sort_order == "newest")
     return sorted_options
+
+
+def normalize_art_preference_categories(
+    value: object,
+    legacy_settings: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    parsed = value
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError:
+            parsed = None
+    enabled_by_key: dict[str, bool] = {}
+    order: list[str] = []
+    if isinstance(parsed, list):
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key") or "")
+            if key not in ART_PREFERENCE_CATEGORY_KEYS or key in order:
+                continue
+            order.append(key)
+            enabled_by_key[key] = coerce_setting_bool(item.get("enabled"), True)
+    for key in ART_PREFERENCE_CATEGORY_KEYS:
+        if key not in order:
+            order.append(key)
+            enabled_by_key[key] = True
+
+    # Preserve the behavior of settings created before the preference interface.
+    legacy_settings = legacy_settings or {}
+    legacy_hides = {
+        "promo": HIDE_PROMO_ARTS_SETTING,
+        "foreign": HIDE_FOREIGN_ARTS_SETTING,
+        "the_list": HIDE_LIST_ARTS_SETTING,
+    }
+    if not isinstance(parsed, list):
+        for key, setting_key in legacy_hides.items():
+            enabled_by_key[key] = not coerce_setting_bool(legacy_settings.get(setting_key), False)
+    return [{"key": key, "enabled": enabled_by_key[key]} for key in order]
+
+
+def art_preference_categories_for_card(card: dict) -> tuple[str, ...]:
+    categories: list[str] = []
+    border_color = str(card.get("border_color") or "").casefold()
+    frame_effects = {str(value).casefold() for value in (card.get("frame_effects") or [])}
+    frame = str(card.get("frame") or "").casefold()
+    if border_color == "borderless":
+        categories.append("borderless")
+    elif "extendedart" in frame_effects:
+        categories.append("extended_art")
+    elif frame in {"1993", "1997"}:
+        categories.append("old_border")
+    else:
+        categories.append("new_border")
+    if is_foreign_scryfall_print(card):
+        categories.append("foreign")
+    if is_promo_scryfall_print(card):
+        categories.append("promo")
+    if is_list_scryfall_print(card):
+        categories.append("the_list")
+    return tuple(categories)
+
+
+def filter_and_sort_art_options(
+    options: list[ArtOption],
+    sort_order: str = "oldest",
+    preference_categories: object = None,
+) -> list[ArtOption]:
+    categories = normalize_art_preference_categories(preference_categories)
+    enabled = {str(item["key"]): bool(item["enabled"]) for item in categories}
+    priority = {str(item["key"]): index for index, item in enumerate(categories)}
+    visible = [
+        option
+        for option in options
+        if all(enabled.get(category, True) for category in option.preference_categories)
+    ]
+    sorted_within_categories = sort_art_options(visible, sort_order)
+    fallback = len(priority)
+    sorted_within_categories.sort(
+        key=lambda option: min(
+            (priority[category] for category in option.preference_categories if enabled.get(category, False)),
+            default=fallback,
+        )
+    )
+    return sorted_within_categories
 
 
 def is_allowed_scryfall_print(card: dict) -> bool:
@@ -618,6 +717,7 @@ class ScryfallClient:
                     png_url=png_url,
                     cache_path=self.image_dir / cache_name,
                     preview_url=str(face.get("preview_url") or png_url),
+                    preference_categories=art_preference_categories_for_card(card),
                 )
                 if download_missing:
                     if self._download_png(option, status_callback):

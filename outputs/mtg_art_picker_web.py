@@ -39,7 +39,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MTG Scryfall Art Picker</title>
-  <link rel="stylesheet" href="/app.css?v=deck12" />
+  <link rel="stylesheet" href="/app.css?v=preferences13" />
 </head>
 <body>
   <header class="topbar">
@@ -66,24 +66,12 @@ HTML = r"""<!doctype html>
         <span>Update Scryfall Images</span>
       </label>
       <label class="check-field">
-        <input id="hidePromoArts" type="checkbox" />
-        <span>Hide Promo Arts</span>
-      </label>
-      <label class="check-field">
-        <input id="hideForeignArts" type="checkbox" />
-        <span>Hide Foreign Arts</span>
-      </label>
-      <label class="check-field">
-        <input id="hideListArts" type="checkbox" />
-        <span>Hide The List Arts</span>
-      </label>
-      <label class="check-field">
         <input id="ignoreBasics" type="checkbox" />
         <span>Ignore Basics</span>
       </label>
     </section>
 
-    <section class="panel sort-controls">
+    <section class="panel ordering-panel">
       <label>
         <span>Art order</span>
         <select id="sortOrder">
@@ -91,6 +79,16 @@ HTML = r"""<!doctype html>
           <option value="newest">Newest first</option>
         </select>
       </label>
+      <div class="preference-editor">
+        <div>
+          <h2>Preference categories</h2>
+          <p>Enabled categories override art order. Art order is applied within each category.</p>
+        </div>
+        <div class="preference-heading" aria-hidden="true">
+          <span>Enabled</span><span>Category</span><span>Order</span>
+        </div>
+        <div id="preferenceCategories" class="preference-categories"></div>
+      </div>
     </section>
 
     <section class="panel deck-panel">
@@ -164,7 +162,7 @@ HTML = r"""<!doctype html>
       </div>
     </div>
   </div>
-  <script src="/app.js?v=deck12"></script>
+  <script src="/app.js?v=preferences13"></script>
 </body>
 </html>
 """
@@ -241,7 +239,7 @@ main {
 
 .setup {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: minmax(320px, 3fr) repeat(2, minmax(160px, 1fr));
   gap: 12px;
 }
 
@@ -299,10 +297,88 @@ textarea {
   font-family: Consolas, "Courier New", monospace;
 }
 
-.sort-controls {
+.ordering-panel {
   display: grid;
-  grid-template-columns: minmax(160px, 220px);
-  gap: 12px;
+  grid-template-columns: minmax(160px, 220px) minmax(440px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.preference-editor {
+  display: grid;
+  gap: 9px;
+}
+
+.preference-editor h2 {
+  margin: 0 0 3px;
+  font-size: 16px;
+}
+
+.preference-editor p {
+  font-size: 12px;
+}
+
+.preference-heading,
+.preference-row {
+  display: grid;
+  grid-template-columns: 92px minmax(150px, 1fr) 92px;
+  gap: 10px;
+  align-items: center;
+}
+
+.preference-heading {
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preference-categories {
+  display: grid;
+  gap: 5px;
+}
+
+.preference-row {
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+
+.preference-row.is-disabled {
+  opacity: 0.62;
+}
+
+.category-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.category-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.category-name {
+  font-weight: 650;
+}
+
+.category-order {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.category-order button {
+  min-width: 38px;
+  min-height: 32px;
+  padding: 3px 8px;
+  font-size: 18px;
+  line-height: 1;
 }
 
 button {
@@ -736,7 +812,10 @@ progress { width: 100%; height: 14px; accent-color: var(--accent); }
 @media (max-width: 840px) {
   .topbar { align-items: flex-start; flex-direction: column; }
   .actions { justify-content: flex-start; }
-  .setup, .sort-controls { grid-template-columns: 1fr; }
+  .setup, .ordering-panel { grid-template-columns: 1fr; }
+  .preference-heading, .preference-row {
+    grid-template-columns: 80px minmax(120px, 1fr) 88px;
+  }
   .modal { padding: 10px; }
   .modal-panel {
     width: calc(100vw - 20px);
@@ -767,19 +846,29 @@ JS = r"""const state = {
   printHistory: [],
   cardHistory: [],
   pollFailures: 0,
+  preferenceCategories: [],
 };
 
 let previewRenderTimer = null;
+let categorySaveTimer = null;
+
+const CATEGORY_LABELS = {
+  borderless: "Borderless",
+  extended_art: "Extended art",
+  old_border: "Old border",
+  new_border: "New border",
+  foreign: "Foreign",
+  promo: "Promo",
+  the_list: "The List",
+};
 
 const els = {
   status: document.querySelector("#status"),
   cacheDir: document.querySelector("#cacheDir"),
   updateScryfallImages: document.querySelector("#updateScryfallImages"),
-  hidePromoArts: document.querySelector("#hidePromoArts"),
-  hideForeignArts: document.querySelector("#hideForeignArts"),
-  hideListArts: document.querySelector("#hideListArts"),
   ignoreBasics: document.querySelector("#ignoreBasics"),
   sortOrder: document.querySelector("#sortOrder"),
+  preferenceCategories: document.querySelector("#preferenceCategories"),
   deckText: document.querySelector("#deckText"),
   progress: document.querySelector("#progress"),
   progressText: document.querySelector("#progressText"),
@@ -860,20 +949,70 @@ function setBusy(busy) {
   els.exportButton.disabled = busy || !state.slots.length;
   els.savePreferencesButton.disabled = busy || !state.slots.length;
   els.updateScryfallImages.disabled = busy;
-  els.hidePromoArts.disabled = busy;
-  els.hideForeignArts.disabled = busy;
-  els.hideListArts.disabled = busy;
   els.ignoreBasics.disabled = busy;
+  els.preferenceCategories.querySelectorAll("input, button").forEach(control => {
+    control.disabled = busy;
+  });
 }
 
 async function loadSettings() {
   const data = await api("/api/settings");
   els.cacheDir.value = data.settings.cache_dir;
   els.updateScryfallImages.checked = Boolean(data.settings.update_scryfall_images);
-  els.hidePromoArts.checked = Boolean(data.settings.hide_promo_arts);
-  els.hideForeignArts.checked = Boolean(data.settings.hide_foreign_arts);
-  els.hideListArts.checked = Boolean(data.settings.hide_list_arts);
   els.ignoreBasics.checked = Boolean(data.settings.ignore_basics);
+  state.preferenceCategories = data.settings.art_preference_categories || [];
+  renderPreferenceCategories();
+}
+
+function renderPreferenceCategories() {
+  els.preferenceCategories.innerHTML = "";
+  state.preferenceCategories.forEach((category, index) => {
+    const row = document.createElement("div");
+    row.className = `preference-row${category.enabled ? "" : " is-disabled"}`;
+    row.innerHTML = `
+      <label class="category-toggle">
+        <input type="checkbox" ${category.enabled ? "checked" : ""} aria-label="Enable ${escapeHtml(CATEGORY_LABELS[category.key] || category.key)}" />
+        <span>${category.enabled ? "On" : "Off"}</span>
+      </label>
+      <span class="category-name">${escapeHtml(CATEGORY_LABELS[category.key] || category.key)}</span>
+      <span class="category-order">
+        <button type="button" class="move-up" aria-label="Move up" title="Move up" ${index === 0 ? "disabled" : ""}>⌃</button>
+        <button type="button" class="move-down" aria-label="Move down" title="Move down" ${index === state.preferenceCategories.length - 1 ? "disabled" : ""}>⌄</button>
+      </span>`;
+    const toggle = row.querySelector("input");
+    toggle.addEventListener("change", () => {
+      category.enabled = toggle.checked;
+      renderPreferenceCategories();
+      scheduleCategorySave();
+    });
+    row.querySelector(".move-up").addEventListener("click", () => movePreferenceCategory(index, -1));
+    row.querySelector(".move-down").addEventListener("click", () => movePreferenceCategory(index, 1));
+    els.preferenceCategories.append(row);
+  });
+  if (state.busy) setBusy(true);
+}
+
+function movePreferenceCategory(index, offset) {
+  const destination = index + offset;
+  if (destination < 0 || destination >= state.preferenceCategories.length) return;
+  const [category] = state.preferenceCategories.splice(index, 1);
+  state.preferenceCategories.splice(destination, 0, category);
+  renderPreferenceCategories();
+  scheduleCategorySave();
+}
+
+function scheduleCategorySave() {
+  clearTimeout(categorySaveTimer);
+  categorySaveTimer = setTimeout(async () => {
+    try {
+      await api("/api/category-preferences", {
+        method: "POST",
+        body: JSON.stringify({ art_preference_categories: state.preferenceCategories }),
+      });
+    } catch (error) {
+      toast(`Could not save category preferences: ${error.message}`);
+    }
+  }, 250);
 }
 
 async function fetchArts() {
@@ -893,9 +1032,7 @@ async function fetchArts() {
         deck_text: els.deckText.value,
         cache_dir: els.cacheDir.value,
         update_scryfall_images: els.updateScryfallImages.checked,
-        hide_promo_arts: els.hidePromoArts.checked,
-        hide_foreign_arts: els.hideForeignArts.checked,
-        hide_list_arts: els.hideListArts.checked,
+        art_preference_categories: state.preferenceCategories,
         ignore_basics: els.ignoreBasics.checked,
         sort_order: els.sortOrder.value,
       }),
@@ -1534,6 +1671,7 @@ def option_to_json(option: core.ArtOption, job_id: str, upscaled_ids: set[str] |
         "selected": option.selected,
         "print_upscaled": option.preference_id in (upscaled_ids or set()),
         "image_url": image_url,
+        "preference_categories": list(option.preference_categories),
     }
 
 
@@ -1552,6 +1690,7 @@ def option_source_to_json(option: core.ArtOption) -> dict:
         "preview_url": option.preview_url,
         "cache_path": str(option.cache_path),
         "preference_key": option.preference_key,
+        "preference_categories": list(option.preference_categories),
     }
 
 
@@ -1570,6 +1709,7 @@ def option_from_source(data: dict) -> core.ArtOption:
         cache_path=Path(str(data.get("cache_path") or "")).expanduser(),
         preview_url=str(data.get("preview_url") or ""),
         preference_key=str(data.get("preference_key") or ""),
+        preference_categories=tuple(str(value) for value in (data.get("preference_categories") or [])),
     )
 
 
@@ -1633,25 +1773,16 @@ def start_fetch_job(payload: dict) -> str:
         payload.get("update_scryfall_images"),
         core.DEFAULT_UPDATE_SCRYFALL_IMAGES,
     )
-    hide_promo_arts = core.coerce_setting_bool(
-        payload.get("hide_promo_arts"),
-        core.DEFAULT_HIDE_PROMO_ARTS,
-    )
-    hide_foreign_arts = core.coerce_setting_bool(
-        payload.get("hide_foreign_arts"),
-        core.DEFAULT_HIDE_FOREIGN_ARTS,
-    )
-    hide_list_arts = core.coerce_setting_bool(
-        payload.get("hide_list_arts"),
-        core.DEFAULT_HIDE_LIST_ARTS,
+    current_settings = core.load_settings()
+    preference_categories = core.normalize_art_preference_categories(
+        payload.get("art_preference_categories"),
+        current_settings,
     )
     settings = {
         "cache_dir": str(payload.get("cache_dir") or core.DEFAULT_CACHE_DIR),
         "export_parent": str(payload.get("export_parent") or core.DEFAULT_EXPORT_PARENT),
         core.UPDATE_SCRYFALL_IMAGES_SETTING: "true" if update_scryfall_images else "false",
-        core.HIDE_PROMO_ARTS_SETTING: "true" if hide_promo_arts else "false",
-        core.HIDE_FOREIGN_ARTS_SETTING: "true" if hide_foreign_arts else "false",
-        core.HIDE_LIST_ARTS_SETTING: "true" if hide_list_arts else "false",
+        core.ART_PREFERENCE_CATEGORIES_SETTING: json.dumps(preference_categories),
         core.IGNORE_BASICS_SETTING: "true" if ignore_basics else "false",
     }
     core.save_settings(settings)
@@ -1677,6 +1808,7 @@ def start_fetch_job(payload: dict) -> str:
 
     ordering = {
         "sort_order": str(payload.get("sort_order") or "oldest"),
+        "preference_categories": preference_categories,
     }
     thread = threading.Thread(
         target=run_fetch_job,
@@ -1685,9 +1817,9 @@ def start_fetch_job(payload: dict) -> str:
             entries,
             settings,
             update_scryfall_images,
-            hide_promo_arts,
-            hide_foreign_arts,
-            hide_list_arts,
+            False,
+            False,
+            False,
             ordering,
         ),
         daemon=True,
@@ -1728,9 +1860,10 @@ def run_fetch_job(
                 update_job(job_id, status=f"Skipping {entry.name}: {exc}")
                 update_job(job_id, done=index)
                 continue
-            options = core.sort_art_options(
+            options = core.filter_and_sort_art_options(
                 options,
                 sort_order=str(ordering.get("sort_order") or "oldest"),
+                preference_categories=ordering.get("preference_categories"),
             )
             current_index, missing = apply_default_selection(entry, options, preferences)
             slots.append(core.CardSlot(entry=entry, options=options, current_index=current_index, requested_printing_missing=missing))
@@ -2456,17 +2589,9 @@ class Handler(BaseHTTPRequestHandler):
                             settings.get(core.UPDATE_SCRYFALL_IMAGES_SETTING),
                             core.DEFAULT_UPDATE_SCRYFALL_IMAGES,
                         ),
-                        "hide_promo_arts": core.coerce_setting_bool(
-                            settings.get(core.HIDE_PROMO_ARTS_SETTING),
-                            core.DEFAULT_HIDE_PROMO_ARTS,
-                        ),
-                        "hide_foreign_arts": core.coerce_setting_bool(
-                            settings.get(core.HIDE_FOREIGN_ARTS_SETTING),
-                            core.DEFAULT_HIDE_FOREIGN_ARTS,
-                        ),
-                        "hide_list_arts": core.coerce_setting_bool(
-                            settings.get(core.HIDE_LIST_ARTS_SETTING),
-                            core.DEFAULT_HIDE_LIST_ARTS,
+                        "art_preference_categories": core.normalize_art_preference_categories(
+                            settings.get(core.ART_PREFERENCE_CATEGORIES_SETTING),
+                            settings,
                         ),
                         "ignore_basics": core.coerce_setting_bool(
                             settings.get(core.IGNORE_BASICS_SETTING),
@@ -2550,6 +2675,15 @@ class Handler(BaseHTTPRequestHandler):
                         saved += 1
                 core.save_preferences(preferences)
                 self.send_json({"ok": True, "saved": saved})
+            elif self.path == "/api/category-preferences":
+                settings = core.load_settings()
+                categories = core.normalize_art_preference_categories(
+                    payload.get("art_preference_categories"),
+                    settings,
+                )
+                settings[core.ART_PREFERENCE_CATEGORIES_SETTING] = json.dumps(categories)
+                core.save_settings(settings)
+                self.send_json({"ok": True, "art_preference_categories": categories})
             else:
                 self.send_json({"ok": False, "error": "Not found."}, HTTPStatus.NOT_FOUND)
         except Exception as exc:

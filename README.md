@@ -18,8 +18,10 @@ more than once.
 
 ## Features
 
-- Oldest-first and newest-first art ordering
-- Separate filters for promo, foreign-language, and The List printings
+- Reorderable preference categories for borderless, extended art, old border,
+  new border, foreign-language, promo, and The List printings
+- Enable/disable switches that hide disabled categories
+- Oldest-first and newest-first ordering within each enabled preference category
 - Custom artwork and saved per-card preferences
 - Requested set and collector-number matching
 - Optional basic-land filtering

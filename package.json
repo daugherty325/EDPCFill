@@ -1,6 +1,6 @@
 {
   "name": "mtg-art-picker-desktop",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Select-first MTG art picker and printable proxy PDF creator",
   "main": "electron/main.js",
   "author": "Local",

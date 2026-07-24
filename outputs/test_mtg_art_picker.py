@@ -126,6 +126,72 @@ class SelectFirstTests(unittest.TestCase):
             self.assertEqual(list_filtered_ids, {"english", "japanese"})
             self.assertEqual(both_filtered_ids, {"english"})
 
+    def test_preference_categories_override_date_sort_and_disabled_categories_are_hidden(self) -> None:
+        def option(card_id: str, released_at: str, *categories: str) -> core.ArtOption:
+            return core.ArtOption(
+                card_id=card_id,
+                oracle_id="oracle",
+                display_name=card_id,
+                printed_name=card_id,
+                set_code="tst",
+                set_name="Test",
+                collector_number=card_id,
+                released_at=released_at,
+                artist="Artist",
+                png_url=f"https://cards.example/{card_id}.png",
+                cache_path=Path(f"{card_id}.png"),
+                preference_categories=categories,
+            )
+
+        options = [
+            option("old-border-newer", "2000-01-01", "old_border"),
+            option("borderless-newer", "2024-01-01", "borderless"),
+            option("borderless-older", "2020-01-01", "borderless"),
+            option("promo", "1999-01-01", "new_border", "promo"),
+            option("new-border", "2005-01-01", "new_border"),
+        ]
+        preferences = [
+            {"key": "borderless", "enabled": True},
+            {"key": "old_border", "enabled": True},
+            {"key": "new_border", "enabled": True},
+            {"key": "promo", "enabled": False},
+            {"key": "extended_art", "enabled": True},
+            {"key": "foreign", "enabled": True},
+            {"key": "the_list", "enabled": True},
+        ]
+
+        result = core.filter_and_sort_art_options(options, "oldest", preferences)
+
+        self.assertEqual(
+            [item.card_id for item in result],
+            ["borderless-older", "borderless-newer", "old-border-newer", "new-border"],
+        )
+
+    def test_scryfall_categories_distinguish_borders_and_cross_cutting_traits(self) -> None:
+        self.assertEqual(
+            core.art_preference_categories_for_card({"frame": "1997", "lang": "en"}),
+            ("old_border",),
+        )
+        self.assertEqual(
+            core.art_preference_categories_for_card(
+                {
+                    "frame": "2015",
+                    "border_color": "borderless",
+                    "lang": "ja",
+                    "promo": True,
+                    "set": "plst",
+                    "set_name": "The List",
+                }
+            ),
+            ("borderless", "foreign", "promo", "the_list"),
+        )
+        self.assertEqual(
+            core.art_preference_categories_for_card(
+                {"frame": "2015", "frame_effects": ["extendedart"], "lang": "en"}
+            ),
+            ("extended_art",),
+        )
+
     def test_uncached_printing_is_available_without_downloading_it(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             client = core.ScryfallClient(Path(temp_dir))

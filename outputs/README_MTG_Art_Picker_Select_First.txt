@@ -26,14 +26,19 @@ PDF creation also reports a live percentage while card images are prepared and
 pages are generated.
 
 Existing cached originals and valid AI upscales are reused. Custom art,
-preferences, requested set/collector numbers, sorting, promo filtering, basic
-land filtering, deck quantities, print-only duplication/deletion, bleed, cut
-guides, Letter/A4 layout, and PDF generation work the same as in the classic
-version.
+preferences, requested set/collector numbers, basic land filtering, deck
+quantities, print-only duplication/deletion, bleed, cut guides, Letter/A4
+layout, and PDF generation work the same as in the classic version.
 
-Foreign-language and The List printings are shown by default. Use the separate
-"Hide Foreign Arts" and "Hide The List Arts" checkboxes to exclude either
-group independently.
+Preference categories
+---------------------
+The preference-category panel controls both visibility and priority for:
+borderless, extended art, old border, new border, foreign, promo, and The List.
+
+Use the arrow buttons to arrange the categories. Enabled categories group arts
+in that order, overriding the main oldest/newest art order. Within each
+category, arts still follow the selected oldest/newest order. Turning a
+category off hides all arts that belong to it.
 
 The original Run_MTG_Art_Picker_Web.bat remains the classic download-first
 version. Both versions use the same settings, preferences, custom art, and
