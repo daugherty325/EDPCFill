@@ -39,7 +39,8 @@ and The List.
 Drag categories by their grab handles to arrange them. Enabled categories group
 arts in that order, overriding the main oldest/newest art order. Within each
 category, arts still follow the selected oldest/newest order. Turning a category
-off hides all arts that belong to it.
+off hides all arts that belong to it. The Priority order dropdown stays
+collapsed when the list is not needed.
 
 Saved preference profiles
 -------------------------

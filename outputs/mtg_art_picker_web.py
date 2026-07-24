@@ -39,7 +39,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MTG Scryfall Art Picker</title>
-  <link rel="stylesheet" href="/app.css?v=drag15" />
+  <link rel="stylesheet" href="/app.css?v=priority-dropdown16" />
 </head>
 <body>
   <header class="topbar">
@@ -92,16 +92,19 @@ HTML = r"""<!doctype html>
           <option value="newest">Newest first</option>
         </select>
       </label>
-      <div class="preference-editor">
-        <div>
-          <h2>Preference categories</h2>
+      <details class="preference-editor">
+        <summary>
+          <span>Priority order</span>
+          <small>Open to reorder or hide art categories</small>
+        </summary>
+        <div class="preference-editor-body">
           <p>Enabled categories override art order. Art order is applied within each category.</p>
+          <div class="preference-heading" aria-hidden="true">
+            <span>Enabled</span><span>Category</span><span>Drag</span>
+          </div>
+          <div id="preferenceCategories" class="preference-categories"></div>
         </div>
-        <div class="preference-heading" aria-hidden="true">
-          <span>Enabled</span><span>Category</span><span>Drag</span>
-        </div>
-        <div id="preferenceCategories" class="preference-categories"></div>
-      </div>
+      </details>
     </section>
 
     <section class="panel deck-panel">
@@ -196,7 +199,7 @@ HTML = r"""<!doctype html>
       </div>
     </div>
   </div>
-  <script src="/app.js?v=drag15"></script>
+  <script src="/app.js?v=priority-dropdown16"></script>
 </body>
 </html>
 """
@@ -351,16 +354,59 @@ textarea {
 }
 
 .preference-editor {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #17212a;
+  overflow: hidden;
+}
+
+.preference-editor summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 46px;
+  padding: 9px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 750;
+  list-style: none;
+}
+
+.preference-editor summary::-webkit-details-marker {
+  display: none;
+}
+
+.preference-editor summary::after {
+  content: "▾";
+  color: var(--accent);
+  font-size: 17px;
+  transition: transform 140ms ease;
+}
+
+.preference-editor[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.preference-editor summary:hover {
+  background: var(--panel-2);
+}
+
+.preference-editor summary small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.preference-editor-body {
   display: grid;
   gap: 9px;
+  padding: 10px;
+  border-top: 1px solid var(--line);
 }
 
-.preference-editor h2 {
-  margin: 0 0 3px;
-  font-size: 16px;
-}
-
-.preference-editor p {
+.preference-editor-body p {
   font-size: 12px;
 }
 

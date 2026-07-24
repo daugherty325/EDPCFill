@@ -107,6 +107,8 @@ class PreferenceProfileTests(unittest.TestCase):
         self.assertIn('row.addEventListener("drop"', web.JS)
         self.assertNotIn("move-up", web.JS)
         self.assertNotIn("move-down", web.JS)
+        self.assertIn('<details class="preference-editor">', web.HTML)
+        self.assertIn("<span>Priority order</span>", web.HTML)
 
 
 class SelectFirstTests(unittest.TestCase):

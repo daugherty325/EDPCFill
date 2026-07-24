@@ -20,6 +20,7 @@ more than once.
 
 - Drag-and-drop preference categories for custom art, borderless, extended art,
   old border, new border, foreign-language, promo, and The List printings
+- Collapsible Priority order dropdown to keep the main screen compact
 - Enable/disable switches that hide disabled categories
 - Oldest-first and newest-first ordering within each enabled preference category
 - Custom artwork and saved per-card preferences
