@@ -61,6 +61,7 @@ HIDE_LIST_ARTS_SETTING = "hide_list_arts"
 DEFAULT_HIDE_LIST_ARTS = False
 ART_PREFERENCE_CATEGORIES_SETTING = "art_preference_categories"
 ART_PREFERENCE_CATEGORY_KEYS = (
+    "custom_art",
     "borderless",
     "extended_art",
     "old_border",
@@ -1141,6 +1142,7 @@ def custom_art_options(card_name: str, custom_dir: Path = DEFAULT_CUSTOM_ART_DIR
                 png_url="",
                 cache_path=path,
                 preference_key=custom_art_id(card_name, path),
+                preference_categories=("custom_art",),
             )
         )
     return options

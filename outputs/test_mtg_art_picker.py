@@ -102,6 +102,12 @@ class PreferenceProfileTests(unittest.TestCase):
                     {"sol ring": "commander-print"},
                 )
 
+    def test_category_interface_uses_drag_and_drop_instead_of_arrow_buttons(self) -> None:
+        self.assertIn('handle.addEventListener("dragstart"', web.JS)
+        self.assertIn('row.addEventListener("drop"', web.JS)
+        self.assertNotIn("move-up", web.JS)
+        self.assertNotIn("move-down", web.JS)
+
 
 class SelectFirstTests(unittest.TestCase):
     def test_foreign_and_list_printings_have_independent_filters(self) -> None:
@@ -239,6 +245,21 @@ class SelectFirstTests(unittest.TestCase):
             ),
             ("extended_art",),
         )
+
+    def test_custom_art_has_its_own_disableable_preference_category(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            custom_dir = Path(temp_dir)
+            (custom_dir / "Example Card.png").touch()
+
+            options = core.custom_art_options("Example Card", custom_dir)
+            filtered = core.filter_and_sort_art_options(
+                options,
+                preference_categories=[{"key": "custom_art", "enabled": False}],
+            )
+
+            self.assertEqual(len(options), 1)
+            self.assertEqual(options[0].preference_categories, ("custom_art",))
+            self.assertEqual(filtered, [])
 
     def test_uncached_printing_is_available_without_downloading_it(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

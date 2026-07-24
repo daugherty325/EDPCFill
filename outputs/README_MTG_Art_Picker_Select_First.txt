@@ -33,12 +33,13 @@ layout, and PDF generation work the same as in the classic version.
 Preference categories
 ---------------------
 The preference-category panel controls both visibility and priority for:
-borderless, extended art, old border, new border, foreign, promo, and The List.
+custom art, borderless, extended art, old border, new border, foreign, promo,
+and The List.
 
-Use the arrow buttons to arrange the categories. Enabled categories group arts
-in that order, overriding the main oldest/newest art order. Within each
-category, arts still follow the selected oldest/newest order. Turning a
-category off hides all arts that belong to it.
+Drag categories by their grab handles to arrange them. Enabled categories group
+arts in that order, overriding the main oldest/newest art order. Within each
+category, arts still follow the selected oldest/newest order. Turning a category
+off hides all arts that belong to it.
 
 Saved preference profiles
 -------------------------

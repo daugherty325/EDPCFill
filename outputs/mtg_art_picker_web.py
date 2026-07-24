@@ -39,7 +39,7 @@ HTML = r"""<!doctype html>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MTG Scryfall Art Picker</title>
-  <link rel="stylesheet" href="/app.css?v=profiles14" />
+  <link rel="stylesheet" href="/app.css?v=drag15" />
 </head>
 <body>
   <header class="topbar">
@@ -98,7 +98,7 @@ HTML = r"""<!doctype html>
           <p>Enabled categories override art order. Art order is applied within each category.</p>
         </div>
         <div class="preference-heading" aria-hidden="true">
-          <span>Enabled</span><span>Category</span><span>Order</span>
+          <span>Enabled</span><span>Category</span><span>Drag</span>
         </div>
         <div id="preferenceCategories" class="preference-categories"></div>
       </div>
@@ -196,7 +196,7 @@ HTML = r"""<!doctype html>
       </div>
     </div>
   </div>
-  <script src="/app.js?v=profiles14"></script>
+  <script src="/app.js?v=drag15"></script>
 </body>
 </html>
 """
@@ -390,10 +390,23 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-2);
+  transition: opacity 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
 .preference-row.is-disabled {
   opacity: 0.62;
+}
+
+.preference-row.is-dragging {
+  opacity: 0.35;
+}
+
+.preference-row.drop-before {
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.preference-row.drop-after {
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 
 .category-toggle {
@@ -413,18 +426,34 @@ textarea {
   font-weight: 650;
 }
 
-.category-order {
+.category-drag {
   display: flex;
   justify-content: flex-end;
-  gap: 5px;
 }
 
-.category-order button {
-  min-width: 38px;
+.drag-handle {
+  display: grid;
+  place-items: center;
+  width: 42px;
   min-height: 32px;
-  padding: 3px 8px;
-  font-size: 18px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  cursor: grab;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -2px;
   line-height: 1;
+  user-select: none;
+}
+
+.drag-handle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 button {
@@ -914,12 +943,14 @@ JS = r"""const state = {
   pollFailures: 0,
   preferenceCategories: [],
   profileDialogMode: null,
+  draggedCategoryKey: null,
 };
 
 let previewRenderTimer = null;
 let categorySaveTimer = null;
 
 const CATEGORY_LABELS = {
+  custom_art: "Custom art",
   borderless: "Borderless",
   extended_art: "Extended art",
   old_border: "Old border",
@@ -1038,6 +1069,10 @@ function setBusy(busy) {
   els.preferenceCategories.querySelectorAll("input, button").forEach(control => {
     control.disabled = busy;
   });
+  els.preferenceCategories.querySelectorAll(".drag-handle").forEach(handle => {
+    handle.draggable = !busy;
+    handle.setAttribute("aria-disabled", busy ? "true" : "false");
+  });
 }
 
 async function loadSettings() {
@@ -1129,39 +1164,88 @@ async function submitProfileDialog() {
   }
 }
 
+function clearDropIndicators() {
+  els.preferenceCategories.querySelectorAll(".preference-row").forEach(row => {
+    row.classList.remove("drop-before", "drop-after");
+  });
+}
+
 function renderPreferenceCategories() {
   els.preferenceCategories.innerHTML = "";
-  state.preferenceCategories.forEach((category, index) => {
+  state.preferenceCategories.forEach(category => {
     const row = document.createElement("div");
     row.className = `preference-row${category.enabled ? "" : " is-disabled"}`;
+    row.dataset.categoryKey = category.key;
     row.innerHTML = `
       <label class="category-toggle">
         <input type="checkbox" ${category.enabled ? "checked" : ""} aria-label="Enable ${escapeHtml(CATEGORY_LABELS[category.key] || category.key)}" />
         <span>${category.enabled ? "On" : "Off"}</span>
       </label>
       <span class="category-name">${escapeHtml(CATEGORY_LABELS[category.key] || category.key)}</span>
-      <span class="category-order">
-        <button type="button" class="move-up" aria-label="Move up" title="Move up" ${index === 0 ? "disabled" : ""}>⌃</button>
-        <button type="button" class="move-down" aria-label="Move down" title="Move down" ${index === state.preferenceCategories.length - 1 ? "disabled" : ""}>⌄</button>
+      <span class="category-drag">
+        <span class="drag-handle" draggable="${state.busy ? "false" : "true"}" role="button" tabindex="0" aria-label="Drag ${escapeHtml(CATEGORY_LABELS[category.key] || category.key)}" title="Drag to reorder">⠿</span>
       </span>`;
     const toggle = row.querySelector("input");
+    const handle = row.querySelector(".drag-handle");
     toggle.addEventListener("change", () => {
       category.enabled = toggle.checked;
       renderPreferenceCategories();
       scheduleCategorySave();
     });
-    row.querySelector(".move-up").addEventListener("click", () => movePreferenceCategory(index, -1));
-    row.querySelector(".move-down").addEventListener("click", () => movePreferenceCategory(index, 1));
+    handle.addEventListener("dragstart", event => {
+      state.draggedCategoryKey = category.key;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", category.key);
+      row.classList.add("is-dragging");
+    });
+    handle.addEventListener("dragend", () => {
+      state.draggedCategoryKey = null;
+      clearDropIndicators();
+      row.classList.remove("is-dragging");
+    });
+    handle.addEventListener("keydown", event => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      const index = state.preferenceCategories.findIndex(item => item.key === category.key);
+      const targetIndex = event.key === "ArrowUp" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= state.preferenceCategories.length) return;
+      const target = state.preferenceCategories[targetIndex];
+      dropPreferenceCategory(category.key, target.key, event.key === "ArrowDown");
+      const movedHandle = els.preferenceCategories.querySelector(`[data-category-key="${category.key}"] .drag-handle`);
+      if (movedHandle) movedHandle.focus();
+    });
+    row.addEventListener("dragover", event => {
+      if (!state.draggedCategoryKey || state.draggedCategoryKey === category.key) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      const after = event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+      clearDropIndicators();
+      row.classList.add(after ? "drop-after" : "drop-before");
+    });
+    row.addEventListener("drop", event => {
+      event.preventDefault();
+      const draggedKey = state.draggedCategoryKey || event.dataTransfer.getData("text/plain");
+      const after = event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+      dropPreferenceCategory(draggedKey, category.key, after);
+    });
     els.preferenceCategories.append(row);
   });
   if (state.busy) setBusy(true);
 }
 
-function movePreferenceCategory(index, offset) {
-  const destination = index + offset;
-  if (destination < 0 || destination >= state.preferenceCategories.length) return;
-  const [category] = state.preferenceCategories.splice(index, 1);
-  state.preferenceCategories.splice(destination, 0, category);
+function dropPreferenceCategory(draggedKey, targetKey, after) {
+  if (!draggedKey || draggedKey === targetKey) {
+    clearDropIndicators();
+    return;
+  }
+  const sourceIndex = state.preferenceCategories.findIndex(category => category.key === draggedKey);
+  let targetIndex = state.preferenceCategories.findIndex(category => category.key === targetKey);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [dragged] = state.preferenceCategories.splice(sourceIndex, 1);
+  if (sourceIndex < targetIndex) targetIndex -= 1;
+  if (after) targetIndex += 1;
+  state.preferenceCategories.splice(targetIndex, 0, dragged);
+  state.draggedCategoryKey = null;
   renderPreferenceCategories();
   scheduleCategorySave();
 }
